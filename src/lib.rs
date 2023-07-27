@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::{fmt::Display, net::Ipv4Addr};
 
 pub struct DnsParser {}
 
@@ -28,10 +28,10 @@ impl DnsParser {
     }
 
     fn parse_domain(&self, buffer: &Vec<u8>, offset: &mut i32) -> String {
-        *offset += 1;
+        *offset += 2;
 
         let mut dns_offset = buffer[*offset as usize] as i32;
-        let w = buffer[*offset as usize] as u16 & 0b11000000_00000000;
+        // let w = buffer[*offset as usize] as u16 & 0b11000000_00000000;
 
         if dns_offset == 0 {
             return String::from("");
@@ -94,13 +94,14 @@ impl DnsParser {
         let rdata_to = *offset as usize + 1 + rdlength as usize;
         let rdata = buffer[rdata_from..rdata_to].to_vec();
 
+        let ip = Ipv4Addr::new(rdata[0], rdata[1], rdata[2], rdata[3]);
         ResourceRecord {
             name,
             rtype,
             rclass,
             ttl,
             rdlength,
-            rdata,
+            rdata: RData::A(ip),
         }
     }
 
@@ -330,13 +331,21 @@ impl Question {
     }
 }
 
+#[derive(Debug)]
 pub struct ResourceRecord {
     name: String,
     rtype: u16,
     rclass: u16,
     ttl: u32,
     rdlength: u16,
-    rdata: Vec<u8>,
+    pub rdata: RData,
+}
+
+#[derive(Debug)]
+pub enum RData {
+    A(Ipv4Addr),
+    CNAME(String),
+    NS(String),
 }
 
 impl ToBytes for Question {

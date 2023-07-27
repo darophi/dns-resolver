@@ -1,7 +1,4 @@
-use std::{
-    fmt::Display,
-    net::{Ipv4Addr, UdpSocket},
-};
+use std::net::{Ipv4Addr, UdpSocket};
 
 use dns_resolver::{
     DnsParser, Header, Message, MessageType, OpCode, Question, ResponseCode, ToBytes,
@@ -44,20 +41,17 @@ fn main() -> std::io::Result<()> {
     };
 
     let query = message.to_bytes();
-    println!("sent bytes: Length={:?} Payload= {:?} ", query.len(), query);
     let result = socket.send(query.as_slice())?;
     println!("ResultSize: {}", result);
 
     let mut buf = [0u8; UDP_BYTE_SIZE_RESTRICTION];
     socket.recv_from(&mut buf).unwrap();
 
-    println!("Got bytes: {:?}", buf);
-
     let parser = DnsParser {};
 
     let msg = parser.parse_message(buf.to_vec());
 
-    println!("Gotmessage: {}", msg.header);
+    println!("Message: {:?}", msg.answers[0]);
 
     Ok(())
 }
