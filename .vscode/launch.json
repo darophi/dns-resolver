@@ -31,14 +31,16 @@
         "args": [
           "build",
           "--bin=dns-resolver",
-          "--package=dns-resolver"
+          "--package=dns-resolver",
         ],
         "filter": {
           "name": "dns-resolver",
           "kind": "bin"
         }
       },
-      "args": [],
+      "args": [
+        "google.com"
+      ],
       "cwd": "${workspaceFolder}"
     },
     {

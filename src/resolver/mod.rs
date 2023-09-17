@@ -5,7 +5,7 @@ use std::{
 
 use rand::{rngs::ThreadRng, Rng};
 
-use crate::dns_cache::IpCache;
+use crate::dns_cache::DnsCache;
 
 const GOOGLE_DNS: &str = "8.8.8.8";
 const DNS_PORT: u16 = 53;
@@ -18,24 +18,50 @@ const UDP_BYTE_SIZE_RESTRICTION: usize = 512;
 const CLASS_IN: u16 = 1;
 
 pub struct DnsService {
-    ip_cache: IpCache,
+    dns_cache: DnsCache,
     udp_socket: UdpSocket,
 }
 
+#[derive(Clone)]
+pub struct DnsQuery {
+    pub dns_name: String,
+    pub message: Message,
+}
+
+pub enum DnsQueryError {
+    FailedToSend,
+}
+
+impl Display for DnsQueryError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DnsQueryError::FailedToSend => write!(f, "Failed to send query"),
+        }
+    }
+}
+
 impl DnsService {
-    pub fn new(udp_socket: UdpSocket, ip_cache: IpCache) -> DnsService {
+    pub fn new(udp_socket: UdpSocket, ip_cache: DnsCache) -> DnsService {
         DnsService {
-            ip_cache,
+            dns_cache: ip_cache,
             udp_socket,
         }
     }
 
-    pub fn send_query(&self, dns_name: String) -> Result<Message, String> {
+    pub fn send_query(&mut self, dns_name: String) -> Result<Message, DnsQueryError> {
+        match self.dns_cache.get(&dns_name) {
+            res => {
+                if res.is_some() {
+                    return Ok(res.unwrap().message);
+                }
+            }
+        }
+
         let message = match create_query(&dns_name) {
             Ok(message) => message,
             Err(e) => {
                 println!("Error: {:?}", e);
-                return Err(String::from("Failed to send"));
+                return Err(DnsQueryError::FailedToSend);
             }
         };
 
@@ -45,15 +71,32 @@ impl DnsService {
             .send(query.as_slice())
             .expect("failed to send message");
         let bytes_to_send = query.len();
+
         println!("Sending {} bytes", bytes_to_send);
 
         let mut buf = [0u8; UDP_BYTE_SIZE_RESTRICTION];
         self.udp_socket.recv_from(&mut buf).unwrap();
 
-        Ok(self.parse_message(buf.to_vec()))
+        let msg = self.parse_message(buf.to_vec());
+
+        if msg.answers.len() > 0 {
+            let dns_name = dns_name.clone();
+
+            let cache_key = dns_name.clone();
+            self.dns_cache.set(
+                cache_key.as_str(),
+                &DnsQuery {
+                    dns_name: cache_key.to_string(),
+                    message: msg.clone(),
+                },
+            );
+            return Ok(msg);
+        }
+
+        Ok(msg)
     }
 
-    fn parse_message(&self, buffer: Vec<u8>) -> Message {
+    fn parse_message(&mut self, buffer: Vec<u8>) -> Message {
         let header = self.parse(&buffer);
         let mut questions = Vec::new();
 
@@ -222,7 +265,7 @@ impl DnsService {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Header {
     pub id: u16,
     pub message_type: MessageType,
@@ -243,6 +286,7 @@ pub trait Serializable {
     fn serialize(&self) -> Vec<u8>;
 }
 
+#[derive(Clone)]
 pub struct Message {
     pub header: Header,
     pub questions: Vec<Question>,
@@ -328,13 +372,13 @@ impl Serializable for Header {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum MessageType {
     Query,
     Response,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum OpCode {
     Query = 0,
     IQuery = 1,
@@ -342,7 +386,7 @@ pub enum OpCode {
     Reserved = 3,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum DnsClass {
     IN = 1,
     CS = 2,
@@ -352,7 +396,7 @@ pub enum DnsClass {
     ANY = 255,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum ResponseCode {
     NoError = 0,
     FormatError = 1,
@@ -362,7 +406,7 @@ pub enum ResponseCode {
     Refused = 5,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Question {
     name: String,
     qtype: u16,
@@ -379,17 +423,17 @@ impl Question {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ResourceRecord {
     name: String,
     rtype: u16,
     rclass: u16,
-    ttl: u32,
+    pub ttl: u32,
     rdlength: u16,
     pub rdata: RData,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum RData {
     A(Ipv4Addr),
     CNAME(String),
