@@ -5,26 +5,25 @@ use std::{
     time::{Duration, Instant},
 };
 
-mod dns_cache;
-mod resolver;
+use clap::Parser;
 
 use crate::{
     dns_cache::DnsCache,
     resolver::{DnsService, DEFAULT_DNS},
 };
 
+mod dns_cache;
+mod resolver;
+
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    dns_query: String,
+}
 fn main() -> std::io::Result<()> {
-    let args = env::args().collect::<Vec<String>>();
+    let args = Args::parse();
 
-    let dns_name = match args.len() {
-        2 => args[1].clone(),
-        _ => {
-            println!("Usage: dns-resolver <dns-name>");
-            exit(1)
-        }
-    };
-
-    let bench_tries = 100000;
+    let bench_tries = 1;
 
     // Udp client
     let socket = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 12345)).expect("Could not bind client");
@@ -39,7 +38,7 @@ fn main() -> std::io::Result<()> {
 
     for i in 0..bench_tries {
         let start = Instant::now();
-        let msg = match dns_service.send_query(dns_name.clone()) {
+        let msg = match dns_service.send_query(args.dns_query.clone()) {
             Ok(msg) => msg,
             Err(e) => {
                 println!("Error: {}", e);
