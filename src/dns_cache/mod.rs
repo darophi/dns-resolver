@@ -20,7 +20,7 @@ impl DnsCache {
             Some(msg) => {
                 let ttl = msg.message.answers.first().to_owned().unwrap().ttl;
 
-                if (ttl > 0) {
+                if ttl > 0 {
                     println!("TTL: {}", ttl);
                     return Some(msg);
                 }

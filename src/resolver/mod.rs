@@ -1,21 +1,23 @@
+mod header;
+mod message;
+mod enums;
+
 use std::{
     fmt::Display,
     net::{Ipv4Addr, UdpSocket},
 };
 
-use rand::{rngs::ThreadRng, Rng};
+use rand::Rng;
 
 use crate::dns_cache::DnsCache;
+use crate::resolver::enums::{MessageType, OpCode, ResponseCode};
+use crate::resolver::header::Header;
+use crate::resolver::message::{create_query, Message};
 
+pub const DEFAULT_DNS: (&str, u16) = (GOOGLE_DNS, DNS_PORT);
+const UDP_BYTE_SIZE_RESTRICTION: usize = 512;
 const GOOGLE_DNS: &str = "8.8.8.8";
 const DNS_PORT: u16 = 53;
-pub const DEFAULT_DNS: (&str, u16) = (GOOGLE_DNS, DNS_PORT);
-
-const TYPE_A: u16 = 1;
-const TYPE_CNAME: u16 = 5;
-const TYPE_NS: u16 = 2;
-const UDP_BYTE_SIZE_RESTRICTION: usize = 512;
-const CLASS_IN: u16 = 1;
 
 pub struct DnsService {
     dns_cache: DnsCache,
@@ -265,145 +267,9 @@ impl DnsService {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct Header {
-    pub id: u16,
-    pub message_type: MessageType,
-    pub op_code: OpCode,
-    pub authoritative_answer: bool,
-    pub truncated: bool,
-    pub recursion_desired: bool,
-    pub recursion_available: bool,
-    pub z: bool,
-    pub response_code: ResponseCode,
-    pub questions: u16,
-    pub answers: u16,
-    pub authorities: u16,
-    pub additionals: u16,
-}
 
 pub trait Serializable {
     fn serialize(&self) -> Vec<u8>;
-}
-
-#[derive(Clone)]
-pub struct Message {
-    pub header: Header,
-    pub questions: Vec<Question>,
-    pub answers: Vec<ResourceRecord>,
-}
-
-impl Serializable for Message {
-    fn serialize(&self) -> Vec<u8> {
-        let mut query = self.header.serialize();
-        for question in &self.questions {
-            query.extend(question.serialize());
-        }
-        query
-    }
-}
-
-impl Display for MessageType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            MessageType::Query => write!(f, "Query"),
-            MessageType::Response => write!(f, "Response"),
-        }
-    }
-}
-
-impl Display for OpCode {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            OpCode::Query => write!(f, "Query"),
-            OpCode::IQuery => write!(f, "IQuery"),
-            OpCode::Status => write!(f, "Status"),
-            OpCode::Reserved => write!(f, "Reserved"),
-        }
-    }
-}
-
-impl Display for ResponseCode {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ResponseCode::NoError => write!(f, "NoError"),
-            ResponseCode::FormatError => write!(f, "FormatError"),
-            ResponseCode::ServerFailure => write!(f, "ServerFailure"),
-            ResponseCode::NameError => write!(f, "NameError"),
-            ResponseCode::NotImplemented => write!(f, "NotImplemented"),
-            ResponseCode::Refused => write!(f, "Refused"),
-        }
-    }
-}
-
-impl Display for Header {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "Header: id: {id}, message_type: {message_type}, op_code: {op_code}, authoritative_answer: {authoritative_answer}, truncated: {truncated}, recursion_desired: {recursion_desired}, recursion_available: {recursion_available}, z: {z}, response_code: {response_code}, questions: {questions}, answers: {answers}, authorities: {authorities}, additionals: {additionals}",
-            id = self.id,
-            message_type = self.message_type,
-            op_code = self.op_code,
-            authoritative_answer = self.authoritative_answer,
-            truncated = self.truncated,
-            recursion_desired = self.recursion_desired,
-            recursion_available = self.recursion_available,
-            z = self.z,
-            response_code = self.response_code,
-            questions = self.questions,
-            answers = self.answers,
-            authorities = self.authorities,
-            additionals = self.additionals
-        )
-    }
-}
-
-impl Serializable for Header {
-    fn serialize(&self) -> Vec<u8> {
-        [
-            self.id.to_be_bytes(),
-            0u16.to_be_bytes(), // Flags will not be set for now
-            self.questions.to_be_bytes(),
-            self.answers.to_be_bytes(),
-            self.authorities.to_be_bytes(),
-            self.additionals.to_be_bytes(),
-        ]
-        .concat()
-    }
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum MessageType {
-    Query,
-    Response,
-}
-
-#[derive(Debug, Clone)]
-pub enum OpCode {
-    Query = 0,
-    IQuery = 1,
-    Status = 2,
-    Reserved = 3,
-}
-
-#[derive(Debug, Clone)]
-pub enum DnsClass {
-    IN = 1,
-    CS = 2,
-    CH = 3,
-    HS = 4,
-    NONE = 254,
-    ANY = 255,
-}
-
-#[derive(Debug, Clone)]
-pub enum ResponseCode {
-    NoError = 0,
-    FormatError = 1,
-    ServerFailure = 2,
-    NameError = 3,
-    NotImplemented = 4,
-    Refused = 5,
 }
 
 #[derive(Debug, Clone)]
@@ -452,66 +318,7 @@ impl Serializable for Question {
     }
 }
 
-pub fn create_query(dns_name: &String) -> Result<Message, DnsValidation> {
-    let mut rng: ThreadRng = rand::thread_rng();
 
-    let dns_validation = validate_dns_name(dns_name);
 
-    if dns_validation != DnsValidation::Valid {
-        return Err(dns_validation);
-    }
 
-    let encoded_dns_name = encode_dns_name(&dns_name);
-    let message = Message {
-        header: Header {
-            id: rng.gen(),
-            message_type: MessageType::Query,
-            op_code: OpCode::Query,
-            authoritative_answer: false,
-            truncated: false,
-            recursion_desired: true,
-            recursion_available: false,
-            response_code: ResponseCode::NoError,
-            z: false,
-            questions: 1,
-            answers: 0,
-            authorities: 0,
-            additionals: 0,
-        },
-        questions: vec![Question::new(encoded_dns_name.clone(), CLASS_IN, TYPE_A)],
-        answers: vec![],
-    };
 
-    Ok(message)
-}
-
-fn validate_dns_name(dns_name: &String) -> DnsValidation {
-    let validate_total_length = dns_name.len() <= 253;
-    if !validate_total_length {
-        return DnsValidation::InvalidTotalLength;
-    }
-
-    let validate_label_length = dns_name.split('.').all(|part| part.len() <= 63);
-    if !validate_label_length {
-        return DnsValidation::InvalidLabelLength;
-    }
-
-    DnsValidation::Valid
-}
-
-#[derive(Debug, PartialEq)]
-pub enum DnsValidation {
-    InvalidTotalLength,
-    InvalidLabelLength,
-    Valid,
-}
-
-fn encode_dns_name(name: &str) -> String {
-    let mut result = String::new();
-    for part in name.split('.') {
-        result.push(part.len() as u8 as char);
-        result.push_str(part);
-    }
-    result.push('\0');
-    result
-}
