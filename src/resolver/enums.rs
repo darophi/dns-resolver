@@ -24,7 +24,7 @@ pub enum DnsClass {
     ANY = 255,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum ResponseCode {
     NoError = 0,
     FormatError = 1,

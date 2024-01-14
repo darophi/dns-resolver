@@ -6,11 +6,13 @@ use std::{
     fmt::Display,
     net::{Ipv4Addr, UdpSocket},
 };
+use std::fmt::write;
 
 use rand::Rng;
 
 use crate::dns_cache::DnsCache;
 use crate::resolver::enums::{MessageType, OpCode, ResponseCode};
+use crate::resolver::enums::ResponseCode::{NoError, ServerFailure};
 use crate::resolver::header::Header;
 use crate::resolver::message::{create_query, Message};
 
@@ -32,12 +34,14 @@ pub struct DnsQuery {
 
 pub enum DnsQueryError {
     FailedToSend,
+    ResponseError(String)
 }
 
 impl Display for DnsQueryError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             DnsQueryError::FailedToSend => write!(f, "Failed to send query"),
+            DnsQueryError::ResponseError(err) => write!(f, "ResponseError occurred: {err}")
         }
     }
 }
@@ -93,6 +97,13 @@ impl DnsService {
                 },
             );
             return Ok(msg);
+        }
+
+        if msg.header.response_code != NoError {
+            return Err(DnsQueryError::ResponseError(msg.header.response_code.to_string()))
+        }
+        else {
+            println!("Successfully found response for query <{}>", dns_name)
         }
 
         Ok(msg)
