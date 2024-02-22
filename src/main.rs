@@ -1,15 +1,15 @@
-use std::{
-    net::{Ipv4Addr, UdpSocket},
-};
+use std::borrow::BorrowMut;
+use std::net::{Ipv4Addr, UdpSocket};
+use std::sync::{Arc, Mutex};
 
-use clap::Parser;
+use axum::extract::State;
+use axum::routing::get;
+use axum::Router;
+use clap::{command, Parser};
 use resolver::RData;
 
-use crate::{
-    dns_cache::DnsCache,
-    resolver::{DnsService},
-};
 use crate::resolver::DEFAULT_DNS;
+use crate::{dns_cache::DnsCache, resolver::DnsService};
 
 mod dns_cache;
 mod resolver;
@@ -20,10 +20,25 @@ struct Args {
     dns_query: String,
 }
 
-fn main() -> std::io::Result<()> {
-    let args = Args::parse();
+struct AppState {
+    db: i32,
+}
 
+#[tokio::main]
+async fn main() -> std::io::Result<()> {
     // Udp client
+    let state = Arc::new(Mutex::new(AppState { db: 0 }));
+
+    let app = Router::new().route("/", get(root)).with_state(state);
+
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
+    axum::serve(listener, app).await.unwrap();
+
+    Ok(())
+}
+
+fn dns_cmd() {
+    let args = Args::parse();
     let socket = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 12345)).expect("Could not bind client");
     socket
         .connect(DEFAULT_DNS)
@@ -48,6 +63,13 @@ fn main() -> std::io::Result<()> {
             _ => {}
         }
     }
+}
 
-    Ok(())
+async fn root(State(state): State<Arc<Mutex<AppState>>>) -> &'static str {
+    let mut x = state.lock().unwrap();
+
+    x.db += 1;
+    println!("DB value: {:?}", x.db);
+
+    "Hello World"
 }
