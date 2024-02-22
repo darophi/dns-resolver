@@ -3,10 +3,12 @@ use std::net::{Ipv4Addr, UdpSocket};
 use std::sync::{Arc, Mutex};
 
 use axum::extract::State;
+use axum::response::{IntoResponse, Response};
 use axum::routing::get;
-use axum::Router;
+use axum::{Json, Router};
 use clap::{command, Parser};
 use resolver::RData;
+use serde::Serialize;
 
 use crate::resolver::DEFAULT_DNS;
 use crate::{dns_cache::DnsCache, resolver::DnsService};
@@ -29,7 +31,7 @@ async fn main() -> std::io::Result<()> {
     // Udp client
     let state = Arc::new(Mutex::new(AppState { db: 0 }));
 
-    let app = Router::new().route("/", get(root)).with_state(state);
+    let app = Router::new().route("/", get(get_hello)).with_state(state);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
     axum::serve(listener, app).await.unwrap();
@@ -65,11 +67,16 @@ fn dns_cmd() {
     }
 }
 
-async fn root(State(state): State<Arc<Mutex<AppState>>>) -> &'static str {
+async fn get_hello(State(state): State<Arc<Mutex<AppState>>>) -> Response {
     let mut x = state.lock().unwrap();
 
     x.db += 1;
     println!("DB value: {:?}", x.db);
 
-    "Hello World"
+    Json(Hello { db: x.db }).into_response()
+}
+
+#[derive(Serialize)]
+struct Hello {
+    db: i32,
 }
