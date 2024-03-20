@@ -1,5 +1,5 @@
-use std::fmt::Display;
 use crate::resolver::{MessageType, OpCode, ResponseCode, Serializable};
+use std::fmt::Display;
 
 #[derive(Debug, Clone)]
 pub struct Header {
@@ -42,14 +42,53 @@ impl Display for Header {
 
 impl Serializable for Header {
     fn serialize(&self) -> Vec<u8> {
+        let qr_flag = match self.message_type {
+            MessageType::Query => 0,
+            MessageType::Response => 1,
+        };
+
+        let opcode = match self.op_code {
+            OpCode::Query => 0,
+            OpCode::IQuery => 1,
+            OpCode::Status => 2,
+            OpCode::Reserved => 3,
+        };
+
+        let recursion_desired = if self.recursion_desired { 1 } else { 0 };
+        let recursion_available = if self.recursion_available { 1 } else { 0 };
+        let authoritative_answer = if self.authoritative_answer { 1 } else { 0 };
+        let truncated = if self.truncated { 1 } else { 0 };
+        let z = if self.z { 1 } else { 0 };
+        let response_code = match self.response_code {
+            ResponseCode::NoError => 0,
+            ResponseCode::FormatError => 1,
+            ResponseCode::ServerFailure => 2,
+            ResponseCode::NameError => 3,
+            ResponseCode::NotImplemented => 4,
+            ResponseCode::Refused => 5,
+            ResponseCode::YxDomain => 6,
+            ResponseCode::XrRSet => 7,
+            ResponseCode::NotAuth => 8,
+            ResponseCode::NotZone => 9,
+        };
+
+        let header_second_row: u16 = qr_flag << 15
+            | opcode << 11
+            | recursion_desired << 8
+            | recursion_available << 7
+            | authoritative_answer << 10
+            | truncated << 9
+            | z << 6
+            | response_code;
+
         [
             self.id.to_be_bytes(),
-            0u16.to_be_bytes(), // Flags will not be set for now
+            header_second_row.to_be_bytes(),
             self.questions.to_be_bytes(),
             self.answers.to_be_bytes(),
             self.authorities.to_be_bytes(),
             self.additionals.to_be_bytes(),
         ]
-            .concat()
+        .concat()
     }
 }

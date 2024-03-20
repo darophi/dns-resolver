@@ -1,7 +1,7 @@
-use rand::prelude::ThreadRng;
-use rand::Rng;
 use crate::resolver::header::Header;
 use crate::resolver::{MessageType, OpCode, Question, ResourceRecord, ResponseCode, Serializable};
+use rand::prelude::ThreadRng;
+use rand::Rng;
 
 #[derive(Debug, PartialEq)]
 pub enum DnsValidation {
@@ -9,7 +9,7 @@ pub enum DnsValidation {
     InvalidLabelLength,
     Valid,
 }
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Message {
     pub header: Header,
     pub questions: Vec<Question>,
@@ -26,6 +26,46 @@ impl Serializable for Message {
             query.extend(question.serialize());
         }
         query
+    }
+}
+
+impl From<Vec<u8>> for Message {
+    fn from(data: Vec<u8>) -> Self {
+        let id = data[0] as u16;
+        let second_row = data[1] as u16;
+        let qr = second_row >> 15;
+        let opcode = (second_row >> 11) & 0b1111;
+        let aa = (second_row >> 10) & 0b1;
+        let tc = (second_row >> 9) & 0b1;
+        let rd = (second_row >> 8) & 0b1;
+        let ra = (second_row >> 7) & 0b1;
+        let z = (second_row >> 6) & 0b1;
+        let rcode = second_row & 0b1111;
+
+        let questions = u16::from_be_bytes(data[4..6].try_into().unwrap());
+        let answers = u16::from_be_bytes(data[6..8].try_into().unwrap());
+        let authorities = u16::from_be_bytes(data[8..10].try_into().unwrap());
+        let additionals = u16::from_be_bytes(data[10..12].try_into().unwrap());
+
+        Self {
+            header: Header {
+                id: id,
+                message_type: qr.into(),
+                op_code: opcode.into(),
+                authoritative_answer: aa == 1,
+                truncated: tc == 1,
+                recursion_desired: rd == 1,
+                recursion_available: ra == 1,
+                response_code: rcode.into(),
+                z: z == 1,
+                questions,
+                answers,
+                authorities,
+                additionals,
+            },
+            questions: vec![],
+            answers: vec![],
+        }
     }
 }
 

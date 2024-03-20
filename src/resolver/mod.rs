@@ -1,18 +1,18 @@
-mod header;
-mod message;
 mod enums;
+mod header;
+pub mod message;
 
+use std::fmt::write;
 use std::{
     fmt::Display,
     net::{Ipv4Addr, UdpSocket},
 };
-use std::fmt::write;
 
 use rand::Rng;
 
 use crate::dns_cache::DnsCache;
-use crate::resolver::enums::{MessageType, OpCode, ResponseCode};
 use crate::resolver::enums::ResponseCode::{NoError, ServerFailure};
+use crate::resolver::enums::{MessageType, OpCode, ResponseCode};
 use crate::resolver::header::Header;
 use crate::resolver::message::{create_query, Message};
 
@@ -34,14 +34,14 @@ pub struct DnsQuery {
 
 pub enum DnsQueryError {
     FailedToSend,
-    ResponseError(String)
+    ResponseError(String),
 }
 
 impl Display for DnsQueryError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             DnsQueryError::FailedToSend => write!(f, "Failed to send query"),
-            DnsQueryError::ResponseError(err) => write!(f, "ResponseError occurred: {err}")
+            DnsQueryError::ResponseError(err) => write!(f, "ResponseError occurred: {err}"),
         }
     }
 }
@@ -54,7 +54,7 @@ impl DnsService {
         }
     }
 
-    pub fn send_query(&mut self, dns_name: String) -> Result<Message, DnsQueryError> {
+    pub fn lookup(&mut self, dns_name: String) -> Result<Message, DnsQueryError> {
         match self.dns_cache.get(&dns_name) {
             res => {
                 if res.is_some() {
@@ -76,9 +76,6 @@ impl DnsService {
         self.udp_socket
             .send(query.as_slice())
             .expect("failed to send message");
-        let bytes_to_send = query.len();
-
-        println!("Sending {} bytes", bytes_to_send);
 
         let mut buf = [0u8; UDP_BYTE_SIZE_RESTRICTION];
         self.udp_socket.recv_from(&mut buf).unwrap();
@@ -100,9 +97,10 @@ impl DnsService {
         }
 
         if msg.header.response_code != NoError {
-            return Err(DnsQueryError::ResponseError(msg.header.response_code.to_string()))
-        }
-        else {
+            return Err(DnsQueryError::ResponseError(
+                msg.header.response_code.to_string(),
+            ));
+        } else {
             println!("Successfully found response for query <{}>", dns_name)
         }
 
@@ -278,7 +276,6 @@ impl DnsService {
     }
 }
 
-
 pub trait Serializable {
     fn serialize(&self) -> Vec<u8>;
 }
@@ -328,8 +325,3 @@ impl Serializable for Question {
         .concat()
     }
 }
-
-
-
-
-
